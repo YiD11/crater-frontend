@@ -52,7 +52,6 @@ export default function CapacityBadges({
       toast.success('User updated')
     },
     onError: () => {
-      toast.error('Update user failed')
       queryClient.invalidateQueries({ queryKey: ['account', aid, 'users'] })
     },
   })
