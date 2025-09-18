@@ -67,7 +67,13 @@ export const getNewJobLink = (jobType: JobType) => {
   }
 }
 
-const ListedNewJobButton = ({ mode }: { mode: 'inter' | 'custom' | 'all' }) => {
+const ListedNewJobButton = ({
+  mode,
+  disabled = false,
+}: {
+  mode: 'inter' | 'custom' | 'all'
+  disabled?: boolean
+}) => {
   const navigate = useNavigate()
   const { t } = useTranslation()
 
@@ -100,6 +106,7 @@ const ListedNewJobButton = ({ mode }: { mode: 'inter' | 'custom' | 'all' }) => {
       itemTitle="作业类型"
       items={items}
       cacheKey={mode}
+      disabled={disabled}
     />
   )
 }

@@ -158,3 +158,20 @@ export const apiAdminResourceVGPUUpdate = (
 export const apiAdminResourceVGPUDelete = (id: number, vgpuId: number) => {
   return apiV1Delete<IResponse<never>>(`admin/resources/${id}/vgpu/${vgpuId}`)
 }
+
+interface QueryCheckUserJupyterResourceLimitReq {
+  aid: number
+  uid: number
+}
+
+interface QueryCheckUserJupyterResourceLimitResp {
+  canCreate: boolean
+}
+
+export const apiQueryCheckUserJupyterResourceLimit = (
+  req: QueryCheckUserJupyterResourceLimitReq
+) => {
+  return apiV1Get<IResponse<QueryCheckUserJupyterResourceLimitResp>>(
+    `resources/${req.uid}/jupyter/limit/${req.aid}`
+  )
+}

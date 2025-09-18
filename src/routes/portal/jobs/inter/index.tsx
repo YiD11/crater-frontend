@@ -18,10 +18,11 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { ColumnDef } from '@tanstack/react-table'
 import { t } from 'i18next'
 import { Trash2Icon } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 import JobPhaseLabel from '@/components/badge/JobPhaseBadge'
 import JobTypeLabel from '@/components/badge/JobTypeBadge'
@@ -38,10 +39,14 @@ import SimpleTooltip from '@/components/label/simple-tooltip'
 import { DataTable } from '@/components/query-table'
 import { DataTableColumnHeader } from '@/components/query-table/column-header'
 
+import { apiQueryCheckUserJupyterResourceLimit } from '@/services/api/resource'
 import { JobPhase, apiJobDelete, apiJobInteractiveList } from '@/services/api/vcjob'
 import { IJobInfo, JobType } from '@/services/api/vcjob'
 
+import { useAuth } from '@/hooks/use-auth'
+
 import { logger } from '@/utils/loglevel'
+import { showErrorToast } from '@/utils/toast'
 
 import { REFETCH_INTERVAL } from '@/lib/constants'
 
@@ -89,6 +94,36 @@ function RouteComponent() {
       toast.success('操作成功')
     },
   })
+
+  const { user, context } = useAuth()
+  const uid = user?.id ? Number(user.id) : undefined
+  const aid = context?.queue ? Number(context.queue.split('-')[1]) : undefined
+  const [disabled, setDisabled] = useState(false)
+  const [reasonDisabled, setReasonDisabled] = useState<string>('')
+  useEffect(() => {
+    const checkJupyter = async () => {
+      if (uid === undefined || aid === undefined) {
+        setDisabled(true)
+        setReasonDisabled('用户信息获取失败，请稍后重试或联系管理员')
+        return
+      }
+      try {
+        const resp = await apiQueryCheckUserJupyterResourceLimit({ aid: aid, uid: uid })
+        if (!resp.data.canCreate) {
+          setDisabled(true)
+          setReasonDisabled('当前资源不足，无法创建新的 Jupyter Lab，请联系管理员')
+        } else {
+          setDisabled(false)
+          setReasonDisabled('')
+        }
+      } catch (error) {
+        setDisabled(true)
+        setReasonDisabled('检查 Jupyter Lab 资源失败，请稍后重试或联系管理员')
+        showErrorToast(error)
+      }
+    }
+    checkJupyter()
+  }, [aid, uid])
 
   const interColumns = useMemo<ColumnDef<IJobInfo>[]>(
     () => [
@@ -235,7 +270,22 @@ function RouteComponent() {
     >
       <div className="flex flex-row gap-3">
         <DocsButton title="查看文档" url="quick-start/interactive" />
-        <ListedNewJobButton mode="inter" />
+        {disabled ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <ListedNewJobButton mode="inter" disabled={disabled} />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{reasonDisabled}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <ListedNewJobButton mode="inter" disabled={disabled} />
+        )}
       </div>
     </DataTable>
   )

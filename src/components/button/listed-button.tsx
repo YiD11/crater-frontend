@@ -42,9 +42,17 @@ interface SplitButtonProps {
   itemTitle: string
   items: SplitButtonItem[]
   cacheKey: string
+  disabled?: boolean
 }
 
-const ListedButton = ({ icon, renderTitle, itemTitle, items, cacheKey }: SplitButtonProps) => {
+const ListedButton = ({
+  icon,
+  renderTitle,
+  itemTitle,
+  items,
+  cacheKey,
+  disabled = false,
+}: SplitButtonProps) => {
   const [position, setPosition] = useLocalStorage(`split-button-${cacheKey}`, items[0].key)
 
   useEffect(() => {
@@ -56,6 +64,21 @@ const ListedButton = ({ icon, renderTitle, itemTitle, items, cacheKey }: SplitBu
       setPosition(items.find((item) => !item.disabled)?.key || items[0].key)
     }
   }, [items, position, setPosition])
+
+  if (disabled) {
+    return (
+      <div className="bg-primary hover:bg-primary/90 flex h-9 w-fit items-center rounded-md transition-colors">
+        <Button
+          disabled={disabled}
+          className="text-primary-foreground hover:text-primary-foreground cursor-pointer rounded-r-none pr-3 capitalize shadow-none hover:bg-transparent dark:hover:bg-transparent"
+          variant="ghost"
+        >
+          {icon}
+          {renderTitle(items.find((item) => item.key === position)?.title)}
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-primary hover:bg-primary/90 flex h-9 w-fit items-center rounded-md transition-colors">
