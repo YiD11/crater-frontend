@@ -426,7 +426,6 @@ export const apiJupyterTokenGet = (jobName: string) =>
       token: string
       podName: string
       namespace: string
-      urlWithToken?: string
     }>
   >(`${JOB_URL}/${jobName}/token`)
 
@@ -442,3 +441,106 @@ export const apiJobScheduleAdmin = () => apiV1Get<IResponse<string>>('admin/oper
 
 export const apiJobScheduleChangeAdmin = (schedule: object) =>
   apiV1Put<IResponse<string>>('admin/operations/cronjob', schedule)
+
+// 作业清理
+export interface WaitingJupyterJobCancelReq {
+  waitMinutes: number
+}
+
+export interface CleanLongTimeReq {
+  batchDays?: number
+  interactiveDays?: number
+}
+
+export interface CleanLowGPUUsageReq {
+  timeRange: number
+  waitTime?: number
+  util?: number
+}
+
+export interface CleanupResult {
+  reminded: string[]
+  deleted: string[]
+}
+
+export const apiAdminWaitingJupyterJobCancel = (param: WaitingJupyterJobCancelReq) => {
+  const searchParams = new URLSearchParams({
+    waitMinitues: param.waitMinutes.toString(),
+  })
+  return apiV1Delete<IResponse<string[]>>(
+    `admin/operations/waiting/jupyter?${searchParams.toString()}`
+  )
+}
+
+export const apiAdminLongTimeRunningJobsCleanup = (param: CleanLongTimeReq) => {
+  const searchParams = new URLSearchParams()
+  if (param.batchDays !== undefined) {
+    searchParams.append('batchDays', param.batchDays.toString())
+  }
+  if (param.interactiveDays !== undefined) {
+    searchParams.append('interactiveDays', param.interactiveDays.toString())
+  }
+  return apiV1Delete<IResponse<CleanupResult>>(
+    `admin/operations/cleanup?${searchParams.toString()}`
+  )
+}
+
+export const apiAdminLowGPUUsageJobsCleanup = (param: CleanLowGPUUsageReq) => {
+  const searchParams = new URLSearchParams({
+    timeRange: param.timeRange.toString(),
+  })
+  if (param.waitTime !== undefined) {
+    searchParams.append('waitTime', param.waitTime.toString())
+  }
+  if (param.util !== undefined) {
+    searchParams.append('util', param.util.toString())
+  }
+  return apiV1Delete<IResponse<CleanupResult>>(`admin/operations/auto?${searchParams.toString()}`)
+}
+
+// Cronjob 执行记录
+export interface CronJobRecord {
+  id: number
+  createdAt: string
+  updatedAt: string
+  name: string
+  executeTime: string
+  status: string
+  message: string
+  jobData?: {
+    reminded?: string[]
+    deleted?: string[]
+  }
+}
+
+export interface CronJobRecordListReq {
+  name?: string[]
+  startTime?: string
+  endTime?: string
+  status?: string
+}
+
+export interface CronJobRecordListResp {
+  records: CronJobRecord[]
+  total: number
+}
+
+export const apiAdminCronJobNameList = () =>
+  apiV1Post<IResponse<string[]>>('admin/operations/cronjob/config/name')
+
+export const apiAdminCronJobRecordTimeRange = () =>
+  apiV1Post<IResponse<{ startTime: string; endTime: string }>>(
+    'admin/operations/cronjob/record/time'
+  )
+
+export const apiAdminCronJobRecordList = (param: CronJobRecordListReq) =>
+  apiV1Post<IResponse<CronJobRecordListResp>>('admin/operations/cronjob/record/list', param)
+
+export interface DeleteCronJobRecordsReq {
+  id?: number[]
+  startTime?: string
+  endTime?: string
+}
+
+export const apiAdminCronJobRecordDelete = (param: DeleteCronJobRecordsReq) =>
+  apiV1Post<IResponse<{ deleted: string }>>('admin/operations/cronjob/record/delete', param)

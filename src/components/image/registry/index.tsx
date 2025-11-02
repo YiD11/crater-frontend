@@ -17,10 +17,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { ColumnDef } from '@tanstack/react-table'
 import { useAtomValue } from 'jotai'
-import { EllipsisVerticalIcon as DotsHorizontalIcon } from 'lucide-react'
+import { CopyIcon, EllipsisVerticalIcon as DotsHorizontalIcon } from 'lucide-react'
 import {
   AlertTriangle,
   CheckCheck,
+  CircleX,
   DatabaseIcon,
   InfoIcon,
   PackagePlusIcon,
@@ -108,13 +109,13 @@ const toolbarConfig: DataTableToolbarConfig = {
 
 interface KanikoListTableProps {
   apiListKaniko: () => Promise<IResponse<ListKanikoResponse>>
-  apiDeleteKanikoList: (idList: number[]) => Promise<IResponse<string>>
+  apiRemoveKanikoList: (idList: number[]) => Promise<IResponse<string>>
   isAdminMode: boolean
 }
 
 export const KanikoListTable: FC<KanikoListTableProps> = ({
   apiListKaniko,
-  apiDeleteKanikoList,
+  apiRemoveKanikoList,
   isAdminMode,
 }) => {
   const queryClient = useQueryClient()
@@ -148,11 +149,31 @@ export const KanikoListTable: FC<KanikoListTableProps> = ({
     }
   }
 
-  const { mutate: deleteKanikoList } = useMutation({
-    mutationFn: (idList: number[]) => apiDeleteKanikoList(idList),
-    onSuccess: async () => {
+  // 统一的移除函数(删除和取消都使用这个)
+  const { mutate: removeKaniko, isPending } = useMutation({
+    mutationFn: (params: { idList: number[]; isCancel?: boolean }) =>
+      apiRemoveKanikoList(params.idList),
+    onSuccess: async (_, variables) => {
+      // 只在取消操作时等待1.5秒让后端有足够时间更新数据
+      if (variables.isCancel) {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+      }
+
       await refetchImagePackList()
-      toast.success('镜像已删除')
+      if (variables.isCancel) {
+        toast.success('已取消构建任务')
+      } else {
+        toast.success('镜像已删除')
+      }
+    },
+    onError: (err, variables) => {
+      if (variables.isCancel) {
+        logger.error('取消镜像构建失败', err)
+        toast.error('取消失败,请稍后重试')
+      } else {
+        logger.error('删除镜像失败', err)
+        toast.error('删除失败,请稍后重试')
+      }
     },
   })
 
@@ -265,6 +286,25 @@ export const KanikoListTable: FC<KanikoListTableProps> = ({
                     <InfoIcon className="text-highlight-emerald" />
                     详情
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const text = kanikoInfo.imageLink ?? ''
+                      if (!text) {
+                        toast.error('没有可复制的链接')
+                        return
+                      }
+                      navigator.clipboard
+                        .writeText(text)
+                        .then(() => toast.success('镜像链接已复制'))
+                        .catch((err) => {
+                          logger.error('复制镜像链接失败', err)
+                          toast.error('复制失败，请手动复制')
+                        })
+                    }}
+                  >
+                    <CopyIcon className="text-highlight-blue size-4" />
+                    镜像链接
+                  </DropdownMenuItem>
 
                   <DropdownMenuItem
                     onClick={() => {
@@ -286,12 +326,27 @@ export const KanikoListTable: FC<KanikoListTableProps> = ({
                     克隆
                   </DropdownMenuItem>
 
-                  <AlertDialogTrigger asChild>
-                    <DropdownMenuItem>
-                      <Trash2Icon className="text-destructive" />
-                      删除
+                  {/* 根据状态显示"取消"或"删除" */}
+                  {kanikoInfo.status === 'Finished' ||
+                  kanikoInfo.status === 'Failed' ||
+                  kanikoInfo.status === 'Canceled' ? (
+                    <AlertDialogTrigger asChild>
+                      <DropdownMenuItem disabled={isPending}>
+                        <Trash2Icon className="text-destructive" />
+                        删除
+                      </DropdownMenuItem>
+                    </AlertDialogTrigger>
+                  ) : (
+                    <DropdownMenuItem
+                      disabled={isPending}
+                      onClick={() => {
+                        removeKaniko({ idList: [kanikoInfo.ID], isCancel: true })
+                      }}
+                    >
+                      <CircleX className="size-4 text-amber-600" />
+                      {isPending ? '取消中...' : '取消'}
                     </DropdownMenuItem>
-                  </AlertDialogTrigger>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
               <AlertDialogContent>
@@ -303,14 +358,15 @@ export const KanikoListTable: FC<KanikoListTableProps> = ({
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogCancel disabled={isPending}>取消</AlertDialogCancel>
                   <AlertDialogAction
                     variant="destructive"
+                    disabled={isPending}
                     onClick={() => {
-                      deleteKanikoList([kanikoInfo.ID])
+                      removeKaniko({ idList: [kanikoInfo.ID], isCancel: false })
                     }}
                   >
-                    删除
+                    {isPending ? '删除中...' : '删除'}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -370,7 +426,7 @@ export const KanikoListTable: FC<KanikoListTableProps> = ({
             icon: <Trash2Icon className="text-destructive" />,
             handleSubmit: (rows) => {
               const ids = rows.map((row) => row.original.ID)
-              deleteKanikoList(ids)
+              removeKaniko({ idList: ids, isCancel: false })
             },
             isDanger: true,
           },
@@ -548,11 +604,12 @@ export const KanikoListTable: FC<KanikoListTableProps> = ({
           <ValidDialog
             linkPairs={selectedLinkPairs}
             onDeleteLinks={(invalidPairs: ImageLinkPair[]) => {
-              deleteKanikoList(
-                invalidPairs
+              removeKaniko({
+                idList: invalidPairs
                   .filter((pair) => pair.creator.username === user?.name)
-                  .map((pair) => pair.id)
-              )
+                  .map((pair) => pair.id),
+                isCancel: false,
+              })
             }}
           />
         </DialogContent>
